@@ -21,13 +21,15 @@ export function useTodos(
       toValue(filters),
       user.value?.id,
     ]),
-    queryFn: () => todoApi.getTodos(toValue(page), 10, toValue(filters)),
+    queryFn: () =>
+      todoApi.getTodos(toValue(page), 10, toValue(filters), user.value?.id),
+    enabled: computed(() => !!user.value?.id),
     staleTime: 5 * 60 * 1000,
     select: (data) => {
+      const userId = user.value?.id
       const filteredTodos = data.data.filter((todo) => {
-        const belongsToUser =
-          !user.value || !todo.owner || todo.owner === user.value.id
-        return belongsToUser
+        if (!userId) return false
+        return todo.owner === userId
       })
 
       return {
@@ -44,19 +46,37 @@ export function useTodos(
 }
 
 export function useTodo(id: MaybeRefOrGetter<string>) {
+  const { user } = useAuth()
+
   return useQuery({
-    queryKey: computed(() => ['todo', toValue(id)]),
+    queryKey: computed(() => ['todo', toValue(id), user.value?.id]),
     queryFn: () => todoApi.getTodoById(toValue(id)),
-    enabled: computed(() => !!toValue(id)),
+    enabled: computed(() => !!toValue(id) && !!user.value?.id),
     staleTime: 5 * 60 * 1000,
+    select: (todo) => {
+      if (!user.value?.id || todo.owner !== user.value.id) {
+        return undefined
+      }
+      return todo
+    },
   })
 }
 
 export function useCreateTodo() {
   const queryClient = useQueryClient()
+  const { user } = useAuth()
 
   return useMutation({
-    mutationFn: (todoData: CreateTodoRequest) => todoApi.createTodo(todoData),
+    mutationFn: (todoData: CreateTodoRequest) => {
+      if (!user.value?.id) {
+        throw new Error('Must be logged in to create todos')
+      }
+
+      return todoApi.createTodo({
+        ...todoData,
+        owner: user.value.id,
+      })
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['todos'] })
     },
@@ -107,19 +127,6 @@ export function useToggleTodoStatus() {
 
       return todoApi.updateTodo(id, {
         status: newStatus as 'TODO' | 'IN_PROGRESS' | 'COMPLETED',
-        name: '',
-        description: null,
-        start: null,
-        end: null,
-        duration: null,
-        priority: 'LOW',
-        archived: false,
-        isDefault: null,
-        parentId: null,
-        children: '',
-        owner: null,
-        tags: null,
-        completedAt: null,
       })
     },
     onSuccess: (_data, { id }) => {

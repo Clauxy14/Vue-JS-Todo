@@ -30,6 +30,7 @@ export const todoApi = {
     page = 1,
     limit = 10,
     filters?: TodoFilters,
+    ownerId?: string,
   ): Promise<PaginatedResponse<Todo>> => {
     const params = new URLSearchParams({
       page: page.toString(),
@@ -45,6 +46,10 @@ export const todoApi = {
         'status',
         filters.completed === 'complete' ? 'COMPLETED' : 'TODO',
       )
+    }
+
+    if (ownerId) {
+      params.append('owner', ownerId)
     }
 
     const response = await api.get(`/tasks?${params.toString()}`)
